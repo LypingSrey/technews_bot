@@ -37,6 +37,13 @@ FEEDS = {
     "GSMArena": "https://www.gsmarena.com/rss-news-reviews.php3",
     "9to5Mac": "https://9to5mac.com/feed/",
     "Android Authority": "https://www.androidauthority.com/feed/",
+    # AI & coding
+    "TechCrunch AI": "https://techcrunch.com/category/artificial-intelligence/feed/",
+    "VentureBeat AI": "https://venturebeat.com/category/ai/feed/",
+    "The Decoder": "https://the-decoder.com/feed/",
+    "GitHub Blog": "https://github.blog/feed/",
+    "Simon Willison": "https://simonwillison.net/atom/everything/",
+    "Hacker News": "https://hnrss.org/frontpage",
 }
 
 # Only send articles that mention at least one of these words.
@@ -49,7 +56,13 @@ KEYWORDS = [
     "iphone", "ipad", "apple", "samsung", "galaxy", "pixel", "android", "ios",
     "snapdragon", "qualcomm", "mediatek", "smartphone", "phone", "xiaomi", "oneplus",
     # AI
-    "ai", "openai", "chatgpt", "gemini", "claude", "llm",
+    "ai", "openai", "chatgpt", "gemini", "claude", "llm", "anthropic",
+    "deepseek", "llama", "mistral", "hugging face", "agentic", "ai agent",
+    # AI for coding
+    "coding", "programming", "programmer", "developer", "copilot", "cursor",
+    "windsurf", "claude code", "codex", "vibe coding", "gemini cli", "devin",
+    "replit", "github", "vs code", "vscode", "python", "javascript",
+    "typescript", "open source", "mcp",
 ]
 
 MAX_ARTICLES_PER_RUN = 15   # most articles sent each time the bot runs
@@ -58,12 +71,17 @@ SUMMARY_LENGTH = 160        # characters of summary shown per article
 
 # Category headings (first match wins, anything else goes under "💡 Tech")
 CATEGORIES = [
+    ("💻 AI & Coding", ["coding", "programming", "programmer", "developer", "copilot",
+                       "cursor", "windsurf", "claude code", "codex", "vibe coding",
+                       "gemini cli", "devin", "replit", "github", "vs code", "vscode",
+                       "python", "javascript", "typescript", "open source", "mcp"]),
     ("🖥️ PC & Hardware", ["nvidia", "geforce", "rtx", "amd", "radeon", "ryzen", "intel",
                           "gpu", "cpu", "processor", "motherboard", "ssd", "ram", "pc", "laptop"]),
     ("📱 Phones & Mobile", ["iphone", "ipad", "samsung", "galaxy", "pixel", "android", "ios",
                            "snapdragon", "qualcomm", "mediatek", "smartphone", "phone",
                            "xiaomi", "oneplus"]),
-    ("🤖 AI", ["ai", "openai", "chatgpt", "gemini", "claude", "llm"]),
+    ("🤖 AI", ["ai", "openai", "chatgpt", "gemini", "claude", "llm", "anthropic",
+               "deepseek", "llama", "mistral", "hugging face", "agentic", "ai agent"]),
 ]
 
 # ============================================================
@@ -157,12 +175,15 @@ def collect_articles(sent_ids):
 
             title = clean_text(entry.get("title", "Untitled"))
             summary = clean_text(entry.get("summary", ""))
+            if "Comments URL" in summary:   # Hacker News has no real summary
+                summary = ""
             if KEYWORD_RE and not KEYWORD_RE.search(f"{title} {summary}"):
                 continue
 
             articles.append({
                 "title": title,
                 "summary": shorten(summary, SUMMARY_LENGTH),
+                "full_text": f"{title} {summary}",   # used for categories
                 "link": link,
                 "source": name,
                 "published": published,
@@ -173,9 +194,8 @@ def collect_articles(sent_ids):
 
 
 def category_of(article):
-    text = article["title"] + " " + article["summary"]
     for name, pattern in CATEGORY_RES:
-        if pattern and pattern.search(text):
+        if pattern and pattern.search(article["full_text"]):
             return name
     return "💡 Tech"
 
@@ -201,8 +221,10 @@ def build_messages(articles):
     order = [name for name, _ in CATEGORIES] + ["💡 Tech"]
     for cat in order:
         if cat in groups:
-            blocks.append(f"<b>{html.escape(cat, quote=False)}</b>")
-            blocks.extend(format_article(a) for a in groups[cat])
+            # Heading shares a block with its first article so a split never orphans it
+            first, *rest = groups[cat]
+            blocks.append(f"<b>{html.escape(cat, quote=False)}</b>\n\n{format_article(first)}")
+            blocks.extend(format_article(a) for a in rest)
 
     messages, current = [], ""
     for block in blocks:
